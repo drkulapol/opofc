@@ -1,0 +1,662 @@
+<title>ชนลูกหนี้ OFC กับ STM</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: ledger workbench — upload strip, KPI ledger line, monthly table with to-scale bars, then the per-patient register with status chips */
+:root{
+  --bg:#f3f5f7; --surface:#ffffff; --ink:#15232d; --muted:#5a6b78; --line:#d9e0e6; --soft:#eaf0f4;
+  --accent:#145c75; --accent-ink:#ffffff; --accent-soft:#dcebf1;
+  --ok:#1d7a4a; --ok-soft:#dcf1e5; --warn:#a2620a; --warn-soft:#fbecd2; --bad:#b3322b; --bad-soft:#f8dedb; --info:#5b47a8; --info-soft:#e7e2f7;
+  --f-display:"Chakra Petch","IBM Plex Sans Thai",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",Tahoma,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f171d; --surface:#16212a; --ink:#e3ebf0; --muted:#94a6b3; --line:#2a3945; --soft:#1d2a34;
+  --accent:#5fb3cf; --accent-ink:#06222c; --accent-soft:#1b3a47;
+  --ok:#5cc98d; --ok-soft:#173a29; --warn:#e6a94a; --warn-soft:#3d2d12; --bad:#f07d74; --bad-soft:#44201d; --info:#ab9cf0; --info-soft:#2b2547;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f171d; --surface:#16212a; --ink:#e3ebf0; --muted:#94a6b3; --line:#2a3945; --soft:#1d2a34;
+  --accent:#5fb3cf; --accent-ink:#06222c; --accent-soft:#1b3a47;
+  --ok:#5cc98d; --ok-soft:#173a29; --warn:#e6a94a; --warn-soft:#3d2d12; --bad:#f07d74; --bad-soft:#44201d; --info:#ab9cf0; --info-soft:#2b2547;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 32px}
+.wrap{max-width:1280px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+h1,h2{font-family:var(--f-display);text-wrap:balance;margin:0;letter-spacing:.01em}
+h1{font-size:26px;font-weight:700;line-height:1.2}
+h2{font-size:18px;font-weight:600}
+.num,td.n,th.n{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.lbl{font-size:11.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600}
+header.top{display:flex;flex-wrap:wrap;gap:12px 24px;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--ink);padding-bottom:12px}
+header.top p{margin:4px 0 0;color:var(--muted);max-width:70ch}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:16px}
+.uploads{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
+.drop{border:1.5px dashed var(--line);border-radius:6px;padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--surface);transition:border-color .15s,background .15s;min-width:0}
+.drop.over{border-color:var(--accent);background:var(--accent-soft)}
+.drop h2{font-size:16px}
+.drop .hint{font-size:12.5px;color:var(--muted);margin:0}
+.drop .state{font-size:13px;min-height:1.4em;overflow-wrap:anywhere}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+button,.btn{font:inherit;font-weight:500;border-radius:5px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:7px 14px;cursor:pointer;line-height:1.3}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,select:focus-visible,input:focus-visible,label.file:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+label.file{display:inline-flex;align-items:center;gap:6px;border-radius:5px;border:1px solid var(--accent);color:var(--accent);padding:7px 14px;cursor:pointer;font-weight:500}
+label.file input{position:absolute;width:1px;height:1px;opacity:0}
+select,input[type=text],input[type=number]{font:inherit;padding:6px 8px;border:1px solid var(--line);border-radius:5px;background:var(--surface);color:var(--ink);min-width:0}
+.mapgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,170px),1fr));gap:8px 12px}
+.mapgrid label{display:flex;flex-direction:column;gap:3px;font-size:12.5px;color:var(--muted)}
+.banner{background:var(--warn-soft);color:var(--ink);border-left:4px solid var(--warn);padding:10px 14px;border-radius:4px;font-size:13.5px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.kpi{background:var(--surface);padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.kpi .v{font-family:var(--f-mono);font-size:21px;font-weight:500;font-variant-numeric:tabular-nums;line-height:1.25}
+.kpi .s{font-size:12.5px;color:var(--muted)}
+.kpi.ok .v{color:var(--ok)} .kpi.bad .v{color:var(--bad)} .kpi.warn .v{color:var(--warn)} .kpi.info .v{color:var(--info)}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:middle}
+th{background:var(--soft);font-weight:600;font-size:12px;color:var(--muted);position:sticky;top:0;z-index:1}
+th.sort{cursor:pointer;user-select:none}
+th.sort:hover{color:var(--ink)}
+td.n,th.n{text-align:right}
+tbody tr:hover td{background:var(--soft)}
+tfoot td{font-weight:600;background:var(--soft)}
+td.name{white-space:normal;min-width:160px}
+.chip{display:inline-block;padding:1px 8px;border-radius:99px;font-size:12px;font-weight:600;line-height:1.6}
+.st-full{background:var(--ok-soft);color:var(--ok)}
+.st-under{background:var(--warn-soft);color:var(--warn)}
+.st-over{background:var(--info-soft);color:var(--info)}
+.st-none{background:var(--bad-soft);color:var(--bad)}
+.st-orphan{background:var(--soft);color:var(--muted);border:1px solid var(--line)}
+.neg{color:var(--bad)} .pos{color:var(--info)}
+.bar{display:flex;height:10px;width:160px;background:var(--soft);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%}
+.bar .b1{background:var(--ok)} .bar .b2{background:var(--bad)}
+.tabs{display:flex;flex-wrap:wrap;gap:6px}
+.tabs button{border-radius:99px;padding:5px 12px;font-size:13px}
+.tabs button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.tabs button .c{font-family:var(--f-mono);font-size:12px;opacity:.8;margin-left:4px}
+.toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.pager{display:flex;gap:8px;align-items:center;font-size:13px}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:10px;height:10px;border-radius:2px;display:inline-block}
+section{display:flex;flex-direction:column;gap:10px}
+.sechead{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between}
+details.help{font-size:13.5px}
+details.help summary{cursor:pointer;font-weight:600}
+details.help ol{margin:8px 0 0;padding-left:20px;max-width:90ch}
+footer.credit{border-top:1px solid var(--line);padding-top:14px;font-size:13px;color:var(--muted);line-height:1.7}
+footer.credit a{color:var(--accent)}
+.sqlbox{position:relative;min-width:0}
+.sqlbox pre{margin:0;background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:14px;overflow-x:auto;font-family:var(--f-mono);font-size:12.5px;line-height:1.6;color:var(--ink);white-space:pre}
+.sqlbox button{position:absolute;top:8px;right:8px;font-size:12.5px;padding:4px 10px}
+.steps{margin:0;padding-left:22px;display:flex;flex-direction:column;gap:6px;max-width:95ch}
+.steps code{font-family:var(--f-mono);font-size:12.5px;background:var(--soft);padding:1px 5px;border-radius:3px}
+.howto{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:18px;margin-top:12px}
+@media (max-width:860px){.howto{grid-template-columns:minmax(0,1fr)}}
+.toast{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;font-size:13.5px;max-width:min(420px,calc(100vw - 32px));z-index:20}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <div class="lbl">ลูกหนี้ค่ารักษา สิทธิเบิกได้ (OFC / จ่ายตรง กรมบัญชีกลาง)</div>
+      <h1>ชนลูกหนี้รายตัวกับ Statement OFC</h1>
+      <p>อัปโหลดไฟล์ลูกหนี้จาก HOSxP และไฟล์ STM (พึงรับ) จาก สปสช. ระบบจะจับคู่รายตัวด้วย AN / VN = SEQ NO แล้วสำรองด้วย HN + วันที่รับบริการ แสดงส่วนต่างและรายที่ยังไม่มี STM ไฟล์ทั้งหมดประมวลผลในเบราว์เซอร์นี้เท่านั้น ไม่ถูกส่งออกไปที่ใด</p>
+    </div>
+    <div class="row">
+      <button id="btnExport" class="primary" type="button">ส่งออก Excel</button>
+      <button id="btnReset" type="button">ล้างข้อมูล</button>
+    </div>
+  </header>
+
+  <div class="uploads">
+    <div class="drop" id="dropDebt">
+      <div class="lbl">ไฟล์ที่ 1</div>
+      <h2>ลูกหนี้รายตัว (จาก HIS)</h2>
+      <p class="hint">.xls / .xlsx / .csv ที่มีคอลัมน์เช่น visit_date, vn, an, hn, fullname, claim_amount (ระบบเดาคอลัมน์ให้ แก้ได้ด้านล่าง)</p>
+      <div class="row"><label class="file">เลือกไฟล์ลูกหนี้<input id="fDebt" type="file" accept=".xls,.xlsx,.csv"></label></div>
+      <div class="state" id="stDebt"></div>
+    </div>
+    <div class="drop" id="dropStm">
+      <div class="lbl">ไฟล์ที่ 2</div>
+      <h2>Statement OFC (STM_xxxxx_OP / IP)</h2>
+      <p class="hint">เลือกได้หลายไฟล์พร้อมกัน หรือเลือกไฟล์ .zip ที่รวม STM ไว้ ไฟล์ซ้ำ (เลขที่เอกสารเดียวกัน) จะถูกนับครั้งเดียว</p>
+      <div class="row"><label class="file">เลือกไฟล์ STM<input id="fStm" type="file" accept=".xls,.xlsx,.zip" multiple></label></div>
+      <div class="state" id="stStm"></div>
+    </div>
+  </div>
+
+  <details class="panel" id="sqlPanel" open>
+    <summary class="sechead" style="cursor:pointer"><h2 style="display:inline">ดึงไฟล์ลูกหนี้จาก HOSxP XE</h2><span class="muted" style="font-size:12.5px">ลูกหนี้ OPD สิทธิเบิกได้ (OFC / O1) ปีงบประมาณ 2569</span></summary>
+    <div class="howto">
+      <div>
+        <div class="lbl" style="margin-bottom:8px">ขั้นตอน</div>
+        <ol class="steps">
+          <li>เปิดเครื่องมือรัน SQL ที่ต่อฐานข้อมูล HOSxP XE (PostgreSQL) ได้ เช่น เมนู SQL Query ใน HOSxP, pgAdmin หรือ DBeaver</li>
+          <li>กด <b>คัดลอก SQL</b> แล้ววางลงในหน้าต่าง Query</li>
+          <li>แก้ช่วงวันที่ในบรรทัด <code>o.vstdate BETWEEN</code> ให้ตรงงวดที่ต้องการตรวจ (ค่าเดิมคือ 1 ต.ค. 2568 ถึง 30 ก.ย. 2569 ใช้ปี ค.ศ.)</li>
+          <li>รัน Query ผลลัพธ์จะมี 7 คอลัมน์: visit_date, vn, hn, fullname, pttype, pttype_name, claim_amount</li>
+          <li>ส่งออกผลเป็น Excel (.xls หรือ .xlsx) หรือ CSV โดยไม่ต้องแก้ชื่อคอลัมน์ ให้คอลัมน์ vn เป็นข้อความ เพื่อไม่ให้ Excel แปลงเลขเป็น 6.81E+11</li>
+          <li>อัปโหลดไฟล์นั้นในช่อง <b>ไฟล์ที่ 1</b> ด้านบน แล้วตรวจกล่อง “คอลัมน์ในไฟล์ลูกหนี้” ว่าเลือก vn, hn, visit_date และ claim_amount ถูกต้อง</li>
+          <li>ดาวน์โหลด Statement OFC (ไฟล์ <code>STM_รหัสรพ_OPปีเดือน_งวด.xls</code>) ให้ครบทุกงวดที่ครอบคลุมช่วงวันที่ข้อ 3 แล้วอัปโหลดในช่อง <b>ไฟล์ที่ 2</b> เลือกหลายไฟล์หรือเป็น .zip ก็ได้</li>
+          <li>ดูผลในแท็บ <b>ไม่พบ STM</b> และ <b>มีส่วนต่าง</b> แล้วกด <b>ส่งออก Excel</b> เพื่อเก็บไว้ตามตัดลูกหนี้</li>
+        </ol>
+        <p class="muted" style="font-size:12.5px;margin:10px 0 0">claim_amount = ค่ารักษาทั้งหมด (vn_stat.income) หักเงินที่ผู้ป่วยชำระแล้ว (rcpt_money) เลือกเฉพาะ visit ที่ไม่ได้ admit และยอดค้างมากกว่า 0</p>
+      </div>
+      <div class="sqlbox">
+        <button type="button" id="btnCopySql">คัดลอก SQL</button>
+<pre id="sqlText">SELECT
+    o.vstdate AS visit_date,
+    o.vn,
+    o.hn,
+    TRIM(COALESCE(p.pname,'') || p.fname || ' ' || p.lname) AS fullname,
+    o.pttype,
+    pt.name AS pttype_name,
+    COALESCE(vs.income,0) - COALESCE(vs.rcpt_money,0) AS claim_amount
+FROM ovst o
+JOIN vn_stat vs ON vs.vn = o.vn
+JOIN patient p ON p.hn = o.hn
+JOIN pttype pt ON pt.pttype = o.pttype
+WHERE o.vstdate BETWEEN '2025-10-01' AND '2026-09-30'
+  AND pt.hipdata_code = 'OFC'
+  AND pt.nhso_code = 'O1'
+  AND (o.an IS NULL OR o.an = '')
+  AND COALESCE(vs.income,0) - COALESCE(vs.rcpt_money,0) &gt; 0
+ORDER BY o.vstdate, o.hn</pre>
+      </div>
+    </div>
+  </details>
+
+  <div class="panel" id="mapPanel" hidden>
+    <div class="sechead"><h2>คอลัมน์ในไฟล์ลูกหนี้</h2><span class="muted" style="font-size:12.5px">ตรวจว่าระบบเลือกคอลัมน์ถูกต้อง เปลี่ยนแล้วคำนวณใหม่ทันที</span></div>
+    <div class="mapgrid" id="mapGrid" style="margin-top:10px"></div>
+    <div class="row" style="margin-top:12px">
+      <label for="tol" class="muted" style="font-size:13px">ยอมให้ต่างได้ไม่เกิน (บาท)</label>
+      <input id="tol" type="number" min="0" step="0.5" value="0" style="width:90px">
+      <label for="cmpField" class="muted" style="font-size:13px;margin-left:8px">เทียบลูกหนี้กับ</label>
+      <select id="cmpField"><option value="pay">พึงรับทั้งหมด (STM)</option><option value="claim">เรียกเก็บ (STM)</option></select>
+    </div>
+  </div>
+
+  <div class="banner" id="sampleBanner">กำลังแสดง <b>ข้อมูลตัวอย่าง</b> (ชื่อและตัวเลขสมมุติ) เพื่อให้เห็นหน้าตาผลลัพธ์ อัปโหลดไฟล์ทั้งสองด้านบนเพื่อเริ่มชนลูกหนี้จริง</div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section>
+    <div class="sechead">
+      <h2>สรุปตามเดือนที่รับบริการ</h2>
+      <div class="legend"><span><i style="background:var(--ok)"></i>ได้รับตาม STM</span><span><i style="background:var(--bad)"></i>ค้าง ไม่พบ STM</span></div>
+    </div>
+    <div class="tablebox"><table id="tMonth"></table></div>
+  </section>
+
+  <section>
+    <div class="sechead"><h2>ทะเบียนลูกหนี้รายตัว</h2></div>
+    <div class="toolbar">
+      <div class="tabs" id="tabs" role="group" aria-label="กรองตามสถานะ"></div>
+      <div class="row">
+        <select id="fMonth" aria-label="กรองเดือน"><option value="">ทุกเดือน</option></select>
+        <input id="q" type="text" placeholder="ค้นหา HN / VN / AN / ชื่อ / PID" aria-label="ค้นหา" style="width:240px">
+      </div>
+    </div>
+    <div class="tablebox" style="max-height:70vh"><table id="tMain"></table></div>
+    <div class="toolbar"><span class="muted" id="mainInfo" style="font-size:13px"></span><div class="pager" id="pager"></div></div>
+  </section>
+
+  <section>
+    <div class="sechead"><h2>สรุปรายงวด Statement</h2><span class="muted" style="font-size:12.5px">แต่ละ REP ในไฟล์ STM ที่อัปโหลด</span></div>
+    <div class="tablebox"><table id="tRep"></table></div>
+  </section>
+
+  <details class="help panel">
+    <summary>วิธีจับคู่และความหมายของสถานะ</summary>
+    <ol>
+      <li>ถ้าลูกหนี้มี AN และ STM มี AN ตรงกัน จับคู่ด้วย AN (ผู้ป่วยใน)</li>
+      <li>ถ้าไม่มี AN ใช้ VN ของ HOSxP เทียบกับคอลัมน์ SEQ NO ใน STM (ผู้ป่วยนอก OFC ส่ง SEQ = VN)</li>
+      <li>รายที่ยังไม่ได้คู่ ใช้ HN + วันที่รับบริการ (เทียบกับวันเข้ารักษาหรือวันจำหน่ายใน STM) จับคู่แบบหนึ่งต่อหนึ่ง</li>
+      <li>ถ้า VN/AN เดียวกันอยู่หลาย REP (เช่น ส่งแก้ไข) ระบบรวมยอดพึงรับทุก REP ให้ลูกหนี้รายนั้น</li>
+      <li><span class="chip st-full">ได้รับครบ</span> พึงรับเท่ากับลูกหนี้ · <span class="chip st-under">ได้รับต่ำกว่า</span> ต้องปรับลดลูกหนี้ส่วนต่าง · <span class="chip st-over">ได้รับสูงกว่า</span> ลูกหนี้บันทึกต่ำไป · <span class="chip st-none">ไม่พบ STM</span> ยังค้างรับ ตรวจการส่งเบิก · <span class="chip st-orphan">STM ไม่มีลูกหนี้</span> มีเงินโอนแต่ไม่พบในไฟล์ลูกหนี้</li>
+    </ol>
+  </details>
+
+  <footer class="credit">
+    ออกแบบและพัฒนาโดย นายแพทย์กุลพล ตั้งรัตนาพิบูล<br>
+    นายแพทย์ชำนาญการ (ด้านเวชกรรม)<br>
+    ปฏิบัติหน้าที่ผู้อำนวยการ<a href="https://www.songkwaehospital.com/" target="_blank" rel="noopener">โรงพยาบาลสองแคว</a> อำเภอสองแคว จังหวัดน่าน
+  </footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+/* ===== CORE (pure functions on arrays-of-rows) ===== */
+const CORE = (() => {
+  const s = v => (v === null || v === undefined) ? '' : String(v).trim();
+  const num = v => { if (typeof v === 'number') return v; const t = s(v).replace(/,/g, ''); const n = parseFloat(t); return isFinite(n) ? n : 0; };
+  const normHN = v => s(v).replace(/^0+/, '');
+  const normId = v => { if (typeof v === 'number') return String(Math.round(v)); return s(v).replace(/\.0+$/, ''); };
+  const pad = n => String(n).padStart(2, '0');
+  function toDate(v) {
+    if (v instanceof Date && !isNaN(v)) return v.getFullYear() + '-' + pad(v.getMonth() + 1) + '-' + pad(v.getDate());
+    if (typeof v === 'number' && v > 20000 && v < 80000) { const d = new Date(Math.round((v - 25569) * 864e5)); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+    const t = s(v).replace(/\s+/g, ' ');
+    if (!t || t === '-') return '';
+    let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    if (m) { let y = +m[1]; if (y > 2400) y -= 543; return y + '-' + pad(m[2]) + '-' + pad(m[3]); }
+    m = t.replace(/ /g, '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) { let y = +m[3]; if (y > 2400) y -= 543; return y + '-' + pad(m[2]) + '-' + pad(m[1]); }
+    return '';
+  }
+  // ---- STM ----
+  function findStmHeader(rows) {
+    for (let i = 0; i < Math.min(rows.length, 40); i++) {
+      const r = (rows[i] || []).map(s);
+      if (r.includes('REP') && r.includes('HN')) return i;
+    }
+    return -1;
+  }
+  function parseStmSheet(rows, fileName) {
+    const h = findStmHeader(rows);
+    if (h < 0) return null;
+    let doc = '', repHdr = '', hcode = '';
+    for (let i = 0; i < h; i++) for (const c of (rows[i] || [])) {
+      const t = s(c);
+      let m = t.match(/เลขที่เอกสาร\s*(\S+)/); if (m) doc = m[1];
+      m = t.match(/^โรงพยาบาล\s+(\d{5})\s*(.*)$/); if (m) hcode = m[1] + ' ' + m[2];
+    }
+    const H = (rows[h] || []).map(s), H2 = (rows[h + 1] || []).map(s);
+    const idx = (...names) => { for (const n of names) { const i = H.findIndex(x => x === n); if (i >= 0) return i; } for (const n of names) { const i = H.findIndex(x => x.replace(/\s/g, '').includes(n.replace(/\s/g, ''))); if (i >= 0) return i; } return -1; };
+    const c = {
+      rep: idx('REP'), no: idx('ลำดับที่'), hn: idx('HN'), an: idx('AN'), pid: idx('PID', 'เลขประจำตัวประชาชน'), name: idx('ชื่อ - สกุล', 'ชื่อ'),
+      adm: idx('วันเข้ารักษา', 'วันรับบริการ'), dch: idx('วันจำหน่าย'), claim: idx('เรียกเก็บ'), pa: idx('พรบ.'),
+      pay: idx('พึงรับทั้งหมด', 'จ่ายชดเชยทั้งสิ้น', 'ชดเชยสุทธิ', 'รวมจ่าย'), seq: idx('SEQ NO', 'SEQ'), rw: idx('AdjRW')
+    };
+    // breakdown sub-columns under "พึงรับ"
+    const sub = []; const pStart = H.findIndex(x => x === 'พึงรับ');
+    if (pStart >= 0) for (let j = pStart; j < H2.length; j++) { if (j > pStart && H[j]) break; if (H2[j]) sub.push([H2[j], j]); }
+    const out = [];
+    for (let i = h + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      const rep = normId(r[c.rep]);
+      if (!/^\d+$/.test(rep)) continue;
+      const an = c.an >= 0 ? s(r[c.an]) : '';
+      out.push({
+        file: fileName, doc, hcode, rep, no: s(r[c.no]), hn: s(r[c.hn]), an: (an === '-' ? '' : an), pid: s(r[c.pid]), name: s(r[c.name]),
+        adm: toDate(r[c.adm]), admRaw: s(r[c.adm]).replace(/\s+/g, ' '), dch: c.dch >= 0 ? toDate(r[c.dch]) : '',
+        claim: c.claim >= 0 ? num(r[c.claim]) : 0, pa: c.pa >= 0 ? num(r[c.pa]) : 0,
+        pay: c.pay >= 0 ? num(r[c.pay]) : 0, seq: c.seq >= 0 ? normId(r[c.seq]) : '', rw: c.rw >= 0 ? num(r[c.rw]) : 0,
+        parts: Object.fromEntries(sub.map(([n, j]) => [n, num(r[j])]))
+      });
+    }
+    return { doc, hcode, rows: out, payFound: c.pay >= 0 };
+  }
+  // ---- Debtor ----
+  const ROLE = {
+    date: { label: 'วันที่รับบริการ / จำหน่าย', re: [/^visit_?date$/i, /^vstdate$/i, /^dchdate$/i, /^regdate$/i, /date/i, /วันที่/] },
+    vn: { label: 'VN (เทียบ SEQ NO)', re: [/^vn$/i, /^seq/i, /vn/i] },
+    an: { label: 'AN (ผู้ป่วยใน)', re: [/^an$/i] },
+    hn: { label: 'HN', re: [/^hn$/i, /hn/i] },
+    cid: { label: 'เลขบัตรประชาชน', re: [/^cid$/i, /^pid$/i, /เลขบัตร|เลขประจำตัว/] },
+    name: { label: 'ชื่อ-สกุล', re: [/^fullname$/i, /name/i, /ชื่อ/] },
+    amt: { label: 'ยอดลูกหนี้', re: [/^claim_?amount$/i, /ลูกหนี้/, /debt/i, /amount/i, /ยอด/, /claim/i] },
+    pttype: { label: 'สิทธิ', re: [/^pttype_?name$/i, /สิทธิ/, /pttype/i] }
+  };
+  function findDebtHeader(rows) {
+    for (let i = 0; i < Math.min(rows.length, 30); i++) { const r = (rows[i] || []).filter(x => s(x)); if (r.length >= 3) return i; }
+    return 0;
+  }
+  function guessMap(header) {
+    const H = header.map(s), used = new Set(), map = {};
+    for (const [k, def] of Object.entries(ROLE)) {
+      map[k] = -1;
+      for (const re of def.re) { const i = H.findIndex((x, j) => !used.has(j) && re.test(x)); if (i >= 0) { map[k] = i; used.add(i); break; } }
+    }
+    return map;
+  }
+  function buildDebtors(rows, h, map) {
+    const out = [];
+    for (let i = h + 1; i < rows.length; i++) {
+      const r = rows[i] || [];
+      if (!r.some(x => s(x))) continue;
+      const g = k => map[k] >= 0 ? r[map[k]] : '';
+      const d = { i: out.length, date: toDate(g('date')), vn: normId(g('vn')), an: s(g('an')), hn: s(g('hn')), cid: s(g('cid')), name: s(g('name')), amt: num(g('amt')), pttype: s(g('pttype')) };
+      if (d.an === '-') d.an = '';
+      if (!d.hn && !d.vn && !d.an) continue;
+      out.push(d);
+    }
+    return out;
+  }
+  // ---- Dedupe STM across uploads ----
+  function dedupeStm(all) {
+    const seen = new Set(), out = [];
+    for (const r of all) { const k = r.rep + '|' + r.no + '|' + r.hn + '|' + r.seq + '|' + r.an; if (seen.has(k)) continue; seen.add(k); out.push(r); }
+    return out;
+  }
+  // ---- Match ----
+  function reconcile(debtors, stm, opt) {
+    const tol = opt.tol || 0, field = opt.field || 'pay';
+    stm.forEach((r, i) => { r._i = i; r._used = false; });
+    const byAN = new Map(), bySEQ = new Map(), byHD = new Map();
+    const push = (m, k, v) => { if (!k) return; if (!m.has(k)) m.set(k, []); m.get(k).push(v); };
+    for (const r of stm) {
+      push(byAN, r.an, r); push(bySEQ, r.seq, r);
+      push(byHD, normHN(r.hn) + '|' + r.adm, r);
+      if (r.dch && r.dch !== r.adm) push(byHD, normHN(r.hn) + '|' + r.dch, r);
+    }
+    const res = debtors.map(d => ({ d, stm: [], how: '', note: '' }));
+    const seenKey = new Map();
+    // pass 1: AN / VN
+    for (const x of res) {
+      const d = x.d; let hits = null, how = '';
+      if (d.an && byAN.has(d.an)) { hits = byAN.get(d.an); how = 'AN'; }
+      else if (d.vn && bySEQ.has(d.vn)) { hits = bySEQ.get(d.vn); how = 'VN=SEQ'; }
+      if (!hits) continue;
+      const key = how + d.an + d.vn;
+      if (seenKey.has(key)) { x.note = 'VN/AN ซ้ำในไฟล์ลูกหนี้ (แถวแรกได้รับคู่แล้ว)'; continue; }
+      seenKey.set(key, 1);
+      const free = hits.filter(r => !r._used);
+      if (!free.length) continue;
+      free.forEach(r => r._used = true); x.stm = free; x.how = how;
+    }
+    // pass 2: HN + date
+    for (const x of res) {
+      if (x.stm.length || x.note) continue;
+      const d = x.d; const k = normHN(d.hn) + '|' + d.date;
+      const cand = (byHD.get(k) || []).filter(r => !r._used);
+      if (!cand.length) continue;
+      // prefer same amount
+      let pick = cand.find(r => Math.abs(r[field] - d.amt) <= tol) || cand[0];
+      pick._used = true; x.stm = [pick]; x.how = 'HN+วันที่';
+    }
+    for (const x of res) {
+      const a = x.d.amt;
+      x.claim = x.stm.reduce((t, r) => t + r.claim, 0);
+      x.pay = x.stm.reduce((t, r) => t + r.pay, 0);
+      x.got = field === 'claim' ? x.claim : x.pay;
+      x.diff = x.stm.length ? x.got - a : -a;
+      x.reps = [...new Set(x.stm.map(r => r.rep))].join(', ');
+      x.docs = [...new Set(x.stm.map(r => r.doc))].join(', ');
+      x.status = !x.stm.length ? 'none' : (Math.abs(x.got - a) <= tol + 1e-6 ? 'full' : (x.got < a ? 'under' : 'over'));
+    }
+    const orphans = stm.filter(r => !r._used);
+    return { res, orphans };
+  }
+  function monthKey(d) { return d ? d.slice(0, 7) : '—'; }
+  const TM = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+  function monthLabel(k) { if (!/^\d{4}-\d{2}$/.test(k)) return 'ไม่ระบุ'; const [y, m] = k.split('-').map(Number); return TM[m - 1] + ' ' + String(y + 543).slice(2); }
+  function thaiDate(d) { if (!d) return ''; const [y, m, dd] = d.split('-'); return dd + '/' + m + '/' + (+y + 543); }
+  return { parseStmSheet, findDebtHeader, guessMap, buildDebtors, dedupeStm, reconcile, monthKey, monthLabel, thaiDate, ROLE, toDate };
+})();
+if (typeof module !== 'undefined') module.exports = CORE;
+/* ===== END CORE ===== */
+</script>
+<script>
+(function(){
+  if (typeof document === 'undefined') return;
+  const $ = id => document.getElementById(id);
+  const fmt = n => (Math.round(n * 100) / 100).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const fmt0 = n => n.toLocaleString('th-TH');
+  const esc = t => String(t ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const ST = { full: 'ได้รับครบ', under: 'ได้รับต่ำกว่า', over: 'ได้รับสูงกว่า', none: 'ไม่พบ STM', orphan: 'STM ไม่มีลูกหนี้' };
+  const S = { debtRows: null, debtHdr: 0, map: null, debtName: '', stm: [], stmFiles: [], sample: true, out: null, tab: 'all', page: 0, sortK: 'date', sortDir: 1 };
+  const PAGE = 100;
+
+  function toast(msg) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 3500); }
+
+  /* --- sample data (fictitious) --- */
+  function loadSample() {
+    const names = ['นายสมมุติ ทดสอบ', 'นางตัวอย่าง ใจดี', 'นายทดลอง รักษา', 'น.ส.สมมุติ เบิกได้', 'นางข้อมูล ตัวอย่าง', 'นายจำลอง ระบบ'];
+    const debt = [['visit_date', 'vn', 'hn', 'fullname', 'pttype_name', 'claim_amount']];
+    const stm = []; let seq = 0;
+    const months = ['2026-06', '2026-07', '2026-08', '2026-09'];
+    months.forEach((m, mi) => { for (let k = 0; k < 9; k++) {
+      const day = String(3 + k * 3).padStart(2, '0'); const date = m + '-' + day;
+      const vn = (m.slice(2, 4) === '26' ? '69' : '69') + m.slice(5) + day + String(80000 + k * 37 + mi).padStart(6, '0');
+      const hn = String(1000 + mi * 20 + k).padStart(7, '0'); const amt = 250 + ((k * 173 + mi * 91) % 2400);
+      debt.push([date, vn, hn, names[(k + mi) % names.length], 'เบิกได้ข้าราชการระบบจ่ายตรง', amt]);
+      const late = mi === 3 && k > 3; const miss = (k === 7 && mi < 3);
+      if (late || miss) continue;
+      const pay = k === 2 ? amt - 250 : (k === 5 && mi === 1 ? amt + 120 : amt);
+      stm.push({ file: 'ตัวอย่าง', doc: '00000_OP' + m.replace('-', '') + '_01', hcode: '', rep: '69' + m.slice(5) + '00001', no: String(++seq), hn, an: '', pid: '', name: names[(k + mi) % names.length], adm: date, admRaw: '', dch: '', claim: amt, pa: 0, pay, seq: vn, rw: 0, parts: {} });
+    }});
+    stm.push({ file: 'ตัวอย่าง', doc: '00000_OP202609_01', hcode: '', rep: '690900001', no: '99', hn: '0009999', an: '', pid: '', name: 'นายไม่มี ลูกหนี้', adm: '2026-09-28', admRaw: '', dch: '', claim: 540, pa: 0, pay: 540, seq: '690928999999', rw: 0, parts: {} });
+    S.debtRows = debt; S.debtHdr = 0; S.map = CORE.guessMap(debt[0]); S.stm = stm; S.sample = true;
+    S.debtName = ''; S.stmFiles = [];
+  }
+
+  /* --- file reading --- */
+  async function readWorkbook(buf, name) {
+    return XLSX.read(buf, { type: 'array', cellDates: true, codepage: 874 });
+  }
+  function sheetRows(ws) { return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' }); }
+
+  async function onDebtFile(file) {
+    if (!file) return;
+    $('stDebt').textContent = 'กำลังอ่าน ' + file.name + ' …';
+    try {
+      const wb = await readWorkbook(await file.arrayBuffer(), file.name);
+      // pick the sheet with most rows
+      let best = null; for (const n of wb.SheetNames) { const r = sheetRows(wb.Sheets[n]); if (!best || r.length > best.length) best = r; }
+      const h = CORE.findDebtHeader(best);
+      if (S.sample) { S.stm = []; S.stmFiles = []; }
+      S.debtRows = best; S.debtHdr = h; S.map = CORE.guessMap(best[h] || []); S.debtName = file.name; S.sample = false;
+      renderMap(); run();
+    } catch (e) { $('stDebt').textContent = 'อ่านไฟล์ไม่ได้: ' + e.message + ' ลองบันทึกเป็น .xlsx แล้วอัปโหลดใหม่'; }
+  }
+
+  async function onStmFiles(files) {
+    if (!files || !files.length) return;
+    $('stStm').textContent = 'กำลังอ่าน ' + files.length + ' ไฟล์ …';
+    if (S.sample) { S.sample = false; S.stm = []; S.stmFiles = []; if (!S.debtName) { S.debtRows = null; } }
+    const items = [];
+    for (const f of files) {
+      if (/\.zip$/i.test(f.name)) {
+        try { const z = await JSZip.loadAsync(await f.arrayBuffer());
+          for (const [p, ent] of Object.entries(z.files)) { if (ent.dir || !/\.xlsx?$/i.test(p) || /(^|\/)(__MACOSX|\.)/.test(p)) continue; items.push({ name: p.split('/').pop(), buf: await ent.async('arraybuffer') }); }
+        } catch (e) { toast('เปิด zip ไม่ได้: ' + f.name); }
+      } else items.push({ name: f.name, buf: await f.arrayBuffer() });
+    }
+    let added = 0, skipped = 0, bad = [];
+    for (const it of items) {
+      try {
+        const wb = await readWorkbook(it.buf, it.name); let got = false;
+        for (const n of wb.SheetNames) {
+          const p = CORE.parseStmSheet(sheetRows(wb.Sheets[n]), it.name);
+          if (!p || !p.rows.length) continue; got = true;
+          if (p.doc && S.stmFiles.some(x => x.doc === p.doc)) { skipped++; continue; }
+          S.stmFiles.push({ name: it.name, doc: p.doc || it.name, n: p.rows.length, payFound: p.payFound });
+          S.stm.push(...p.rows); added++;
+        }
+        if (!got) bad.push(it.name);
+      } catch (e) { bad.push(it.name); }
+    }
+    S.stm = CORE.dedupeStm(S.stm);
+    let msg = 'เพิ่ม ' + added + ' เอกสาร'; if (skipped) msg += ', ข้ามไฟล์ซ้ำ ' + skipped; if (bad.length) msg += ', อ่านไม่ได้ ' + bad.length + ' (' + bad.slice(0, 3).join(', ') + ')';
+    toast(msg); run();
+  }
+
+  function renderMap() {
+    const g = $('mapGrid'); const H = (S.debtRows[S.debtHdr] || []).map(x => String(x ?? ''));
+    g.innerHTML = Object.entries(CORE.ROLE).map(([k, def]) =>
+      `<label for="map_${k}">${esc(def.label)}<select id="map_${k}" data-k="${k}"><option value="-1">— ไม่มี —</option>${H.map((h, i) => `<option value="${i}"${S.map[k] === i ? ' selected' : ''}>${esc(h || ('คอลัมน์ ' + (i + 1)))}</option>`).join('')}</select></label>`).join('');
+    g.querySelectorAll('select').forEach(el => el.addEventListener('change', () => { S.map[el.dataset.k] = +el.value; run(); }));
+    $('mapPanel').hidden = false;
+  }
+
+  function run() {
+    $('sampleBanner').hidden = !S.sample;
+    const debtors = S.debtRows ? CORE.buildDebtors(S.debtRows, S.debtHdr, S.map) : [];
+    const tol = Math.max(0, parseFloat($('tol').value) || 0);
+    S.out = CORE.reconcile(debtors, S.stm, { tol, field: $('cmpField').value });
+    $('stDebt').innerHTML = S.sample ? '<span class="muted">ยังไม่ได้อัปโหลด (แสดงตัวอย่าง)</span>' : (S.debtName ? `<b>${esc(S.debtName)}</b> · ${fmt0(debtors.length)} ราย · ${fmt(debtors.reduce((t, d) => t + d.amt, 0))} บาท` : '<span class="muted">ยังไม่ได้อัปโหลด</span>');
+    const docs = S.sample ? [] : S.stmFiles;
+    $('stStm').innerHTML = S.sample ? '<span class="muted">ยังไม่ได้อัปโหลด (แสดงตัวอย่าง)</span>' : (docs.length ? `<b>${docs.length}</b> เอกสาร · ${fmt0(S.stm.length)} รายการ · พึงรับ ${fmt(S.stm.reduce((t, r) => t + r.pay, 0))} บาท` + (docs.some(d => !d.payFound) ? ' <span class="neg">· บางไฟล์ไม่พบคอลัมน์พึงรับ</span>' : '') : '<span class="muted">ยังไม่ได้อัปโหลด</span>');
+    // month options
+    const months = [...new Set(S.out.res.map(x => CORE.monthKey(x.d.date)))].sort();
+    const fm = $('fMonth'), cur = fm.value;
+    fm.innerHTML = '<option value="">ทุกเดือน</option>' + months.map(m => `<option value="${m}"${m === cur ? ' selected' : ''}>${CORE.monthLabel(m)}</option>`).join('');
+    S.page = 0;
+    renderKpis(); renderMonths(months); renderTabs(); renderMain(); renderReps();
+  }
+
+  function agg(list) {
+    const o = { n: list.length, amt: 0, got: 0, gotN: 0, diff: 0, noneN: 0, noneAmt: 0, underN: 0, under: 0, overN: 0, over: 0, fullN: 0 };
+    for (const x of list) {
+      o.amt += x.d.amt;
+      if (x.status === 'none') { o.noneN++; o.noneAmt += x.d.amt; continue; }
+      o.gotN++; o.got += x.got; o.diff += x.got - x.d.amt;
+      if (x.status === 'under') { o.underN++; o.under += x.d.amt - x.got; } else if (x.status === 'over') { o.overN++; o.over += x.got - x.d.amt; } else o.fullN++;
+    }
+    return o;
+  }
+
+  function renderKpis() {
+    const a = agg(S.out.res), orph = S.out.orphans, orphAmt = orph.reduce((t, r) => t + r.pay, 0);
+    const pct = a.n ? (a.gotN / a.n * 100) : 0;
+    $('kpis').innerHTML = [
+      ['', 'ลูกหนี้ทั้งหมด', fmt(a.amt), fmt0(a.n) + ' ราย'],
+      ['ok', 'พบใน STM (พึงรับ)', fmt(a.got), fmt0(a.gotN) + ' ราย · ' + pct.toFixed(1) + '% ของราย'],
+      ['bad', 'ไม่พบ STM (ค้างรับ)', fmt(a.noneAmt), fmt0(a.noneN) + ' ราย'],
+      ['warn', 'ได้รับต่ำกว่าลูกหนี้', fmt(a.under), fmt0(a.underN) + ' ราย · ต้องปรับลด'],
+      ['info', 'ได้รับสูงกว่าลูกหนี้', fmt(a.over), fmt0(a.overN) + ' ราย'],
+      ['', 'STM ไม่มีลูกหนี้', fmt(orphAmt), fmt0(orph.length) + ' รายการ'],
+    ].map(([c, l, v, sub]) => `<div class="kpi ${c}"><span class="lbl">${l}</span><span class="v">${v}</span><span class="s">${sub}</span></div>`).join('');
+  }
+
+  function renderMonths(months) {
+    const groups = new Map(months.map(m => [m, []]));
+    for (const x of S.out.res) groups.get(CORE.monthKey(x.d.date)).push(x);
+    const rows = months.map(m => [m, agg(groups.get(m))]);
+    const max = Math.max(1, ...rows.map(([, a]) => a.amt));
+    const tot = agg(S.out.res);
+    const tr = (lab, a, bar) => `<td>${lab}</td><td class="n">${fmt0(a.n)}</td><td class="n">${fmt(a.amt)}</td><td class="n">${fmt0(a.gotN)}</td><td class="n">${fmt(a.got)}</td><td class="n ${a.diff < -0.005 ? 'neg' : a.diff > 0.005 ? 'pos' : ''}">${fmt(a.diff)}</td><td class="n">${fmt0(a.noneN)}</td><td class="n ${a.noneAmt > 0 ? 'neg' : ''}">${fmt(a.noneAmt)}</td><td class="n">${a.amt ? (a.amt - a.noneAmt) / a.amt * 100 > 0 ? ((a.amt - a.noneAmt) / a.amt * 100).toFixed(1) : '0.0' : '–'}%</td><td>${bar}</td>`;
+    const bar = a => { const w = 160 * a.amt / max; const g = a.amt ? (a.amt - a.noneAmt) / a.amt : 0; return `<div class="bar" style="width:${Math.max(2, w).toFixed(1)}px" title="${fmt(a.amt)}"><i class="b1" style="width:${(g * 100).toFixed(2)}%"></i><i class="b2" style="width:${((1 - g) * 100).toFixed(2)}%"></i></div>`; };
+    $('tMonth').innerHTML = `<thead><tr><th>เดือน</th><th class="n">ราย</th><th class="n">ลูกหนี้ (บาท)</th><th class="n">พบ STM</th><th class="n">พึงรับ (บาท)</th><th class="n">ส่วนต่าง</th><th class="n">ค้าง ราย</th><th class="n">ค้าง (บาท)</th><th class="n">% ยอดที่พบ</th><th>ลูกหนี้ตามสัดส่วน</th></tr></thead>
+      <tbody>${rows.map(([m, a]) => `<tr>${tr(CORE.monthLabel(m), a, bar(a))}</tr>`).join('') || '<tr><td colspan="10" class="muted">ยังไม่มีข้อมูลลูกหนี้</td></tr>'}</tbody>
+      <tfoot><tr>${tr('รวม', tot, '')}</tr></tfoot>`;
+  }
+
+  function filtered() {
+    const q = $('q').value.trim().toLowerCase(), m = $('fMonth').value, tab = S.tab;
+    if (tab === 'orphan') {
+      return S.out.orphans.filter(r => (!m || CORE.monthKey(r.adm) === m) && (!q || [r.hn, r.seq, r.an, r.name, r.pid].some(v => String(v).toLowerCase().includes(q))))
+        .map(r => ({ orphan: true, status: 'orphan', d: { date: r.adm, vn: r.seq, an: r.an, hn: r.hn, name: r.name, cid: r.pid, amt: 0 }, claim: r.claim, pay: r.pay, got: r.pay, diff: r.pay, reps: r.rep, docs: r.doc, how: '', note: '', stm: [r] }));
+    }
+    return S.out.res.filter(x => (tab === 'all' || x.status === tab || (tab === 'diff' && (x.status === 'under' || x.status === 'over'))) && (!m || CORE.monthKey(x.d.date) === m) &&
+      (!q || [x.d.hn, x.d.vn, x.d.an, x.d.name, x.d.cid].some(v => String(v).toLowerCase().includes(q))));
+  }
+
+  function renderTabs() {
+    const r = S.out.res, c = k => r.filter(x => x.status === k).length;
+    const tabs = [['all', 'ทั้งหมด', r.length], ['none', 'ไม่พบ STM', c('none')], ['diff', 'มีส่วนต่าง', c('under') + c('over')], ['under', 'ได้รับต่ำกว่า', c('under')], ['over', 'ได้รับสูงกว่า', c('over')], ['full', 'ได้รับครบ', c('full')], ['orphan', 'STM ไม่มีลูกหนี้', S.out.orphans.length]];
+    $('tabs').innerHTML = tabs.map(([k, l, n]) => `<button type="button" data-t="${k}" aria-pressed="${S.tab === k}">${l}<span class="c">${fmt0(n)}</span></button>`).join('');
+    $('tabs').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { S.tab = b.dataset.t; S.page = 0; renderTabs(); renderMain(); }));
+  }
+
+  const COLS = [
+    ['status', 'สถานะ'], ['date', 'วันที่รับบริการ'], ['vn', 'VN / SEQ'], ['an', 'AN'], ['hn', 'HN'], ['name', 'ชื่อ-สกุล'],
+    ['amt', 'ลูกหนี้', 1], ['claim', 'เรียกเก็บ STM', 1], ['pay', 'พึงรับ STM', 1], ['diff', 'ส่วนต่าง', 1], ['age', 'ค้าง (วัน)', 1], ['reps', 'REP'], ['how', 'จับคู่ด้วย']
+  ];
+  const today = new Date(); const todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+  const ageOf = d => d ? Math.round((Date.parse(todayStr) - Date.parse(d)) / 864e5) : '';
+  const val = (x, k) => ({ status: x.status, date: x.d.date, vn: x.d.vn, an: x.d.an, hn: x.d.hn, name: x.d.name, amt: x.d.amt, claim: x.claim, pay: x.pay, diff: x.diff, age: x.status === 'none' ? ageOf(x.d.date) : -1, reps: x.reps, how: x.how }[k]);
+
+  function renderMain() {
+    let list = filtered();
+    const k = S.sortK, dir = S.sortDir;
+    list = list.slice().sort((a, b) => { const va = val(a, k), vb = val(b, k); return (typeof va === 'number' ? va - vb : String(va).localeCompare(String(vb), 'th')) * dir; });
+    const pages = Math.max(1, Math.ceil(list.length / PAGE)); if (S.page >= pages) S.page = pages - 1;
+    const slice = list.slice(S.page * PAGE, S.page * PAGE + PAGE);
+    const sumAmt = list.reduce((t, x) => t + x.d.amt, 0), sumPay = list.reduce((t, x) => t + (x.status === 'none' ? 0 : x.pay), 0), sumDiff = list.reduce((t, x) => t + x.diff, 0);
+    $('tMain').innerHTML = `<thead><tr>${COLS.map(([c, l, n]) => `<th class="sort${n ? ' n' : ''}" data-k="${c}" aria-sort="${S.sortK === c ? (dir > 0 ? 'ascending' : 'descending') : 'none'}">${l}${S.sortK === c ? (dir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('')}</tr></thead>
+      <tbody>${slice.map(x => `<tr>
+        <td><span class="chip st-${x.status}">${ST[x.status]}</span></td><td class="num">${CORE.thaiDate(x.d.date)}</td><td class="num">${esc(x.d.vn)}</td><td class="num">${esc(x.d.an)}</td><td class="num">${esc(x.d.hn)}</td>
+        <td class="name">${esc(x.d.name)}${x.note ? `<div class="muted" style="font-size:12px">${esc(x.note)}</div>` : ''}</td>
+        <td class="n">${x.orphan ? '' : fmt(x.d.amt)}</td><td class="n">${x.status === 'none' ? '' : fmt(x.claim)}</td><td class="n">${x.status === 'none' ? '' : fmt(x.pay)}</td>
+        <td class="n ${x.diff < -0.005 ? 'neg' : x.diff > 0.005 ? 'pos' : ''}">${fmt(x.diff)}</td><td class="n">${x.status === 'none' ? ageOf(x.d.date) : ''}</td>
+        <td class="num" style="font-size:12px">${esc(x.reps)}</td><td style="font-size:12px">${esc(x.how)}</td></tr>`).join('') || `<tr><td colspan="${COLS.length}" class="muted">ไม่มีรายการในเงื่อนไขนี้</td></tr>`}</tbody>
+      <tfoot><tr><td colspan="6">รวม ${fmt0(list.length)} รายการ</td><td class="n">${S.tab === 'orphan' ? '' : fmt(sumAmt)}</td><td></td><td class="n">${fmt(sumPay)}</td><td class="n">${fmt(sumDiff)}</td><td colspan="3"></td></tr></tfoot>`;
+    $('tMain').querySelectorAll('th.sort').forEach(th => th.addEventListener('click', () => { const c = th.dataset.k; if (S.sortK === c) S.sortDir *= -1; else { S.sortK = c; S.sortDir = 1; } renderMain(); }));
+    $('mainInfo').textContent = list.length ? `แสดง ${fmt0(S.page * PAGE + 1)}–${fmt0(Math.min(list.length, (S.page + 1) * PAGE))} จาก ${fmt0(list.length)} รายการ · ส่วนต่าง = พึงรับ − ลูกหนี้` : '';
+    $('pager').innerHTML = pages > 1 ? `<button type="button" id="pgPrev" ${S.page === 0 ? 'disabled' : ''}>ก่อนหน้า</button><span class="num">${S.page + 1} / ${pages}</span><button type="button" id="pgNext" ${S.page >= pages - 1 ? 'disabled' : ''}>ถัดไป</button>` : '';
+    if (pages > 1) { $('pgPrev').onclick = () => { S.page--; renderMain(); }; $('pgNext').onclick = () => { S.page++; renderMain(); }; }
+  }
+
+  function repSummary() {
+    const m = new Map();
+    for (const r of S.stm) { const k = r.rep; if (!m.has(k)) m.set(k, { doc: r.doc, rep: r.rep, n: 0, claim: 0, pay: 0, used: 0, usedPay: 0 }); const o = m.get(k); o.n++; o.claim += r.claim; o.pay += r.pay; if (r._used) { o.used++; o.usedPay += r.pay; } }
+    return [...m.values()].sort((a, b) => (a.doc + a.rep).localeCompare(b.doc + b.rep));
+  }
+  function renderReps() {
+    const reps = repSummary();
+    const t = reps.reduce((o, r) => { o.n += r.n; o.claim += r.claim; o.pay += r.pay; o.used += r.used; return o; }, { n: 0, claim: 0, pay: 0, used: 0 });
+    $('tRep').innerHTML = `<thead><tr><th>เลขที่เอกสาร</th><th>REP NO</th><th class="n">รายการ</th><th class="n">เรียกเก็บ</th><th class="n">พึงรับ</th><th class="n">จับคู่ลูกหนี้ได้</th><th class="n">ไม่มีลูกหนี้</th></tr></thead>
+      <tbody>${reps.map(r => `<tr><td class="num">${esc(r.doc)}</td><td class="num">${esc(r.rep)}</td><td class="n">${fmt0(r.n)}</td><td class="n">${fmt(r.claim)}</td><td class="n">${fmt(r.pay)}</td><td class="n">${fmt0(r.used)}</td><td class="n ${r.n - r.used ? 'neg' : ''}">${fmt0(r.n - r.used)}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">ยังไม่มีไฟล์ STM</td></tr>'}</tbody>
+      <tfoot><tr><td colspan="2">รวม ${fmt0(reps.length)} REP</td><td class="n">${fmt0(t.n)}</td><td class="n">${fmt(t.claim)}</td><td class="n">${fmt(t.pay)}</td><td class="n">${fmt0(t.used)}</td><td class="n">${fmt0(t.n - t.used)}</td></tr></tfoot>`;
+  }
+
+  /* --- export --- */
+  async function exportXlsx() {
+    if (!S.out || !S.out.res.length) { toast('ยังไม่มีข้อมูลให้ส่งออก'); return; }
+    const wb = XLSX.utils.book_new();
+    const r2 = n => Math.round(n * 100) / 100;
+    const add = (name, aoa, widths) => { const ws = XLSX.utils.aoa_to_sheet(aoa); ws['!cols'] = widths.map(w => ({ wch: w })); XLSX.utils.book_append_sheet(wb, ws, name); };
+    const a = agg(S.out.res);
+    const months = [...new Set(S.out.res.map(x => CORE.monthKey(x.d.date)))].sort();
+    const sum = [['ชนลูกหนี้ OFC กับ Statement', ''], ['ไฟล์ลูกหนี้', S.sample ? 'ข้อมูลตัวอย่าง' : S.debtName], ['จำนวนเอกสาร STM', S.sample ? 0 : S.stmFiles.length], ['เทียบกับ', $('cmpField').value === 'pay' ? 'พึงรับทั้งหมด' : 'เรียกเก็บ'], ['ส่งออกเมื่อ', new Date().toLocaleString('th-TH')], [],
+      ['รายการ', 'ราย', 'บาท'], ['ลูกหนี้ทั้งหมด', a.n, r2(a.amt)], ['พบใน STM (พึงรับ)', a.gotN, r2(a.got)], ['ไม่พบ STM (ค้างรับ)', a.noneN, r2(a.noneAmt)], ['ได้รับต่ำกว่าลูกหนี้', a.underN, r2(a.under)], ['ได้รับสูงกว่าลูกหนี้', a.overN, r2(a.over)], ['STM ไม่มีลูกหนี้', S.out.orphans.length, r2(S.out.orphans.reduce((t, r) => t + r.pay, 0))], [],
+      ['เดือนที่รับบริการ', 'ราย', 'ลูกหนี้', 'พบ STM ราย', 'พึงรับ', 'ส่วนต่าง', 'ค้าง ราย', 'ค้าง บาท']];
+    for (const m of months) { const g = agg(S.out.res.filter(x => CORE.monthKey(x.d.date) === m)); sum.push([CORE.monthLabel(m), g.n, r2(g.amt), g.gotN, r2(g.got), r2(g.diff), g.noneN, r2(g.noneAmt)]); }
+    add('สรุป', sum, [26, 12, 16, 12, 16, 14, 10, 14]);
+    const hdr = ['สถานะ', 'วันที่รับบริการ', 'VN', 'AN', 'HN', 'เลขบัตรประชาชน', 'ชื่อ-สกุล', 'สิทธิ', 'ลูกหนี้', 'เรียกเก็บ STM', 'พึงรับ STM', 'ส่วนต่าง (พึงรับ-ลูกหนี้)', 'ค้าง (วัน)', 'เลขที่เอกสาร STM', 'REP', 'PID ใน STM', 'จับคู่ด้วย', 'หมายเหตุ'];
+    const line = x => [ST[x.status], CORE.thaiDate(x.d.date), x.d.vn, x.d.an, x.d.hn, x.d.cid, x.d.name, x.d.pttype, r2(x.d.amt), x.status === 'none' ? '' : r2(x.claim), x.status === 'none' ? '' : r2(x.pay), r2(x.diff), x.status === 'none' ? ageOf(x.d.date) : '', x.docs, x.reps, [...new Set(x.stm.map(r => r.pid))].join(', '), x.how, x.note];
+    const W = [14, 12, 14, 11, 9, 15, 26, 22, 11, 11, 11, 12, 9, 20, 12, 15, 10, 24];
+    add('ลูกหนี้-เทียบSTM', [hdr, ...S.out.res.map(line)], W);
+    add('ไม่พบSTM', [hdr, ...S.out.res.filter(x => x.status === 'none').map(line)], W);
+    add('มีส่วนต่าง', [hdr, ...S.out.res.filter(x => x.status === 'under' || x.status === 'over').map(line)], W);
+    add('STMไม่มีลูกหนี้', [['เลขที่เอกสาร', 'REP', 'ลำดับ', 'HN', 'AN', 'PID', 'ชื่อ-สกุล', 'วันเข้ารักษา', 'วันจำหน่าย', 'SEQ NO', 'เรียกเก็บ', 'พึงรับทั้งหมด', 'ไฟล์'],
+      ...S.out.orphans.map(r => [r.doc, r.rep, r.no, r.hn, r.an, r.pid, r.name, CORE.thaiDate(r.adm), CORE.thaiDate(r.dch), r.seq, r.claim, r.pay, r.file])], [20, 12, 7, 9, 11, 15, 26, 12, 12, 14, 11, 12, 28]);
+    add('รายงวดSTM', [['เลขที่เอกสาร', 'REP NO', 'รายการ', 'เรียกเก็บ', 'พึงรับ', 'จับคู่ลูกหนี้ได้', 'ไม่มีลูกหนี้'], ...repSummary().map(r => [r.doc, r.rep, r.n, r2(r.claim), r2(r.pay), r.used, r.n - r.used])], [20, 12, 9, 13, 13, 14, 12]);
+    const d = new Date(); const fname = `ชนลูกหนี้OFC_STM_${d.getFullYear() + 543}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.xlsx`;
+    const buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    let dl = null;
+    try { dl = window.claude && window.claude.use ? await window.claude.use('downloads') : null; } catch (e) { dl = null; }
+    if (dl) {
+      try { await dl.save({ filename: fname, data: new Blob([buf]) }); toast('บันทึกไฟล์แล้ว'); }
+      catch (e) { if (e && e.code === 'declined') toast('ยกเลิกการบันทึก'); else toast('บันทึกไม่ได้ในหน้านี้ (' + (e && e.code || 'error') + ')'); }
+    } else { XLSX.writeFile(wb, fname); }
+  }
+
+  /* --- wiring --- */
+  $('fDebt').addEventListener('change', e => { onDebtFile(e.target.files[0]); e.target.value = ''; });
+  $('fStm').addEventListener('change', e => { onStmFiles([...e.target.files]); e.target.value = ''; });
+  for (const [id, fn] of [['dropDebt', fs => onDebtFile(fs[0])], ['dropStm', fs => onStmFiles(fs)]]) {
+    const el = $(id);
+    el.addEventListener('dragover', e => { e.preventDefault(); el.classList.add('over'); });
+    el.addEventListener('dragleave', () => el.classList.remove('over'));
+    el.addEventListener('drop', e => { e.preventDefault(); el.classList.remove('over'); fn([...e.dataTransfer.files]); });
+  }
+  $('tol').addEventListener('change', run); $('cmpField').addEventListener('change', run);
+  $('fMonth').addEventListener('change', () => { S.page = 0; renderMain(); });
+  let qt; $('q').addEventListener('input', () => { clearTimeout(qt); qt = setTimeout(() => { S.page = 0; renderMain(); }, 200); });
+  $('btnExport').addEventListener('click', exportXlsx);
+  $('btnCopySql').addEventListener('click', () => {
+    const t = $('sqlText').textContent;
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents($('sqlText')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('เลือกข้อความแล้ว กด Ctrl+C เพื่อคัดลอก'); };
+    try { navigator.clipboard.writeText(t).then(() => toast('คัดลอก SQL แล้ว'), fallback); } catch (e) { fallback(); }
+  });
+  $('btnReset').addEventListener('click', () => { loadSample(); $('mapPanel').hidden = true; run(); toast('ล้างข้อมูลแล้ว กลับไปแสดงตัวอย่าง'); });
+  loadSample(); run();
+})();
+</script>
