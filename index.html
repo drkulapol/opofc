@@ -104,9 +104,22 @@ footer.credit a{color:var(--accent)}
 @media (max-width:860px){.howto{grid-template-columns:minmax(0,1fr)}}
 .toast{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:6px;font-size:13.5px;max-width:min(420px,calc(100vw - 32px));z-index:20}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+nav.sitenav{display:flex;flex-wrap:wrap;gap:6px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:6px;font-family:var(--f-display)}
+nav.sitenav a{flex:1 1 auto;text-align:center;padding:7px 12px;border-radius:4px;color:var(--ink);text-decoration:none;font-size:13.5px;font-weight:500;white-space:nowrap}
+nav.sitenav a:hover{background:var(--soft)}
+nav.sitenav a[aria-current="page"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+nav.sitenav a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 </style>
 
 <div class="wrap">
+  <nav class="sitenav" aria-label="ระบบลูกหนี้รายตัว">
+    <a href="https://drkulapol.github.io/opofc/index.html" aria-current="page">ลูกหนี้ OP เบิกได้</a>
+    <a href="https://drkulapol.github.io/ipofc/index.html">ลูกหนี้ IPD เบิกได้</a>
+    <a href="https://drkulapol.github.io/ipuc/index.html">ลูกหนี้ IPD UC</a>
+    <a href="https://drkulapol.github.io/check-op-uc/index.html">ลูกหนี้ OP ON TOP</a>
+    <a href="https://drkulapol.github.io/opstp/index.html">ลูกหนี้ OP STP</a>
+    <a href="https://drkulapol.github.io/ipstp/index.html">ลูกหนี้ IP STP</a>
+  </nav>
   <header class="top">
     <div>
       <div class="lbl">ลูกหนี้ค่ารักษา สิทธิเบิกได้ (OFC / จ่ายตรง กรมบัญชีกลาง)</div>
